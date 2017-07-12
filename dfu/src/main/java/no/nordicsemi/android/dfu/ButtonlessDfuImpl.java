@@ -49,6 +49,13 @@ import no.nordicsemi.android.dfu.internal.exception.UploadAbortedException;
 
 	@Override
 	public void performDfu(final Intent intent) throws DfuException, DeviceDisconnectedException, UploadAbortedException {
+		performDfu(intent, 4);
+	}
+
+	public void performDfu(final Intent intent, int retries) throws DfuException, DeviceDisconnectedException, UploadAbortedException {
+		if (retries == 0)
+			return;
+
 		mProgressInfo.setProgress(DfuBaseService.PROGRESS_STARTING);
 
 		// Add one second delay to avoid the traffic jam before the DFU mode is enabled
@@ -122,15 +129,25 @@ import no.nordicsemi.android.dfu.internal.exception.UploadAbortedException;
 
 			finalize(intent, false, shouldScanForBootloader());
 		} catch (final UnknownResponseException e) {
-			final int error = DfuBaseService.ERROR_INVALID_RESPONSE;
-			loge(e.getMessage());
-			mService.sendLogBroadcast(DfuBaseService.LOG_LEVEL_ERROR, e.getMessage());
-			mService.terminateConnection(gatt, error);
+			if (retries > 1) {
+				performDfu(intent, retries - 1);
+			}
+			else {
+				final int error = DfuBaseService.ERROR_INVALID_RESPONSE;
+				loge(e.getMessage());
+				mService.sendLogBroadcast(DfuBaseService.LOG_LEVEL_ERROR, e.getMessage());
+				mService.terminateConnection(gatt, error);
+			}
 		} catch (final RemoteDfuException e) {
-			final int error = DfuBaseService.ERROR_REMOTE_MASK | e.getErrorNumber();
-			loge(e.getMessage());
-			mService.sendLogBroadcast(DfuBaseService.LOG_LEVEL_ERROR, String.format("Remote DFU error: %s", parse(error)));
-			mService.terminateConnection(gatt, error);
+			if (retries > 1) {
+				performDfu(intent, retries - 1);
+			}
+			else {
+				final int error = DfuBaseService.ERROR_REMOTE_MASK | e.getErrorNumber();
+				loge(e.getMessage());
+				mService.sendLogBroadcast(DfuBaseService.LOG_LEVEL_ERROR, String.format("Remote DFU error: %s", parse(error)));
+				mService.terminateConnection(gatt, error);
+			}
 		}
 	}
 
