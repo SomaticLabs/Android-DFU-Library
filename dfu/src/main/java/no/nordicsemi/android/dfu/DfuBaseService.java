@@ -1034,7 +1034,31 @@ public abstract class DfuBaseService extends IntentService implements DfuProgres
 				return;
 			}
 			if (mConnectionState == STATE_DISCONNECTED) {
+
 				loge("Device got disconnected before service discovery finished");
+				// Connection usually fails due to a 133 error (device unreachable, or.. something else went wrong).
+				// Usually trying the same for the second or third time works.
+				if (intent.getIntExtra(EXTRA_ATTEMPT, 0) < 2) {
+					sendLogBroadcast(LOG_LEVEL_WARNING, "Retrying...");
+
+					if (mConnectionState != STATE_DISCONNECTED) {
+						// Disconnect from the device
+						disconnect(gatt);
+					}
+					// Close the device
+					refreshDeviceCache(gatt, true);
+					close(gatt);
+
+					logi("Restarting the service");
+					final Intent newIntent = new Intent();
+					newIntent.fillIn(intent, Intent.FILL_IN_COMPONENT | Intent.FILL_IN_PACKAGE);
+					int attempts = intent.getIntExtra(EXTRA_ATTEMPT,0);
+					attempts++;
+					newIntent.putExtra(EXTRA_ATTEMPT, attempts);
+					startService(newIntent);
+					return;
+				}
+
 				sendLogBroadcast(LOG_LEVEL_INFO, "Disconnected");
 				terminateConnection(gatt, ERROR_DEVICE_DISCONNECTED);
 				return;
@@ -1050,7 +1074,7 @@ public abstract class DfuBaseService extends IntentService implements DfuProgres
 					sendLogBroadcast(LOG_LEVEL_ERROR, String.format("Connection failed (0x%02X): %s", error, GattError.parse(error)));
 				}
 				// Connection usually fails due to a 133 error (device unreachable, or.. something else went wrong).
-				// Usually trying the same for the second time works.
+				// Usually trying the same for the second or third time works.
 				if (intent.getIntExtra(EXTRA_ATTEMPT, 0) == 0) {
 					sendLogBroadcast(LOG_LEVEL_WARNING, "Retrying...");
 
@@ -1065,7 +1089,9 @@ public abstract class DfuBaseService extends IntentService implements DfuProgres
 					logi("Restarting the service");
 					final Intent newIntent = new Intent();
 					newIntent.fillIn(intent, Intent.FILL_IN_COMPONENT | Intent.FILL_IN_PACKAGE);
-					newIntent.putExtra(EXTRA_ATTEMPT, 1);
+					int attempts = intent.getIntExtra(EXTRA_ATTEMPT,0);
+					attempts++;
+					newIntent.putExtra(EXTRA_ATTEMPT, attempts);
 					startService(newIntent);
 					return;
 				}
